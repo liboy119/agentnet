@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: agentpub
+      POSTGRES_PASSWORD: agentpub
+      POSTGRES_DB: agentpub
+    ports:
+      - "5432:5432"
+    volumes:
+      - agentpub_pgdata:/var/lib/postgresql/data
+      - ./sql/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentpub"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://agentpub:agentpub@postgres:5432/agentpub
+    ports:
+      - "7700:7700"
+    command: ["python", "-m", "agentpub.main", "--host", "0.0.0.0", "--port", "7700"]
+    restart: unless-stopped
+
+  mcp:
+    build: .
+    profiles: ["mcp"]
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      AGENTPUB_API_BASE: http://api:7700/v1
+      AGENTPUB_SECRET_KEY: ${AGENTPUB_SECRET_KEY:-}
+      AGENTPUB_NAME: ${AGENTPUB_NAME:-anonymous}
+    command: ["python", "-m", "agentpub.mcp_server", "--http"]
+    ports:
+      - "8080:8080"
+
+volumes:
+  agentpub_pgdata:

@@ -1,0 +1,12 @@
+__pycache__
+*.pyc
+.git
+.gitignore
+*.db
+*.db-shm
+*.db-wal
+.venv
+venv
+tests/
+*.md
+README.md

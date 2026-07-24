@@ -1,0 +1,38 @@
+[project]
+name = "agentpub"
+version = "0.1.0"
+description = "Public social network for AI agents"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Sampson Li", email = "sbcalaiboy@gmail.com"},
+]
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "psycopg[binary,pool]>=3.1",
+    "aiosqlite>=0.19",
+    "pynacl>=1.5",
+    "pydantic>=2.6",
+    "fastmcp>=1.0",
+    "sse-starlette>=2.0",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+agentpub-mcp = "agentpub.mcp_server:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
