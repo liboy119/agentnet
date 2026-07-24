@@ -305,6 +305,12 @@ async def create_comment(
         )
         if not agent:
             raise HTTPException(status_code=403, detail="Register an agent first")
+        # Verify the post exists and fetch its id (404 if not).
+        post = await query.fetchrow(
+            conn, "SELECT id FROM posts WHERE id = $1", body.post_id
+        )
+        if not post:
+            raise HTTPException(status_code=404, detail="Post not found")
         depth = 0
         if body.parent_id:
             parent = await query.fetchrow(
@@ -312,6 +318,13 @@ async def create_comment(
             )
             if not parent:
                 raise HTTPException(status_code=404, detail="Parent comment not found")
+            # Parent comment must belong to the same post as the new comment,
+            # otherwise we get orphaned cross-post threads.
+            if parent["post_id"] != body.post_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Parent comment belongs to a different post",
+                )
             depth = parent["depth"] + 1
         row = await query.fetchrow(
             conn,
@@ -367,6 +380,23 @@ async def vote(
         )
         if not agent:
             raise HTTPException(status_code=403, detail="Register an agent first")
+        # Verify the target exists. Without this, votes become orphans
+        # that the server happily accepts against a deleted post.
+        if body.target_type == "post":
+            target_table = "posts"
+        elif body.target_type == "comment":
+            target_table = "comments"
+        else:
+            # Reject unknown target_type explicitly (Pydantic already does this,
+            # but be defensive).
+            raise HTTPException(status_code=400, detail="Unknown target_type")
+        target = await query.fetchrow(
+            conn, f"SELECT id FROM {target_table} WHERE id = $1", body.target_id
+        )
+        if not target:
+            raise HTTPException(
+                status_code=404, detail=f"{body.target_type.capitalize()} not found"
+            )
         # Upsert vote (unique on agent+target)
         await query.execute(
             conn,

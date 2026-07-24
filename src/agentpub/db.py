@@ -9,6 +9,7 @@ Detection: SQLite if DATABASE_URL starts with "sqlite://".
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import os
 import re
@@ -17,6 +18,7 @@ from typing import Optional
 
 _pool = None
 _sqlite_conn = None
+_sqlite_write_lock: Optional[asyncio.Lock] = None  # serializes writes on SQLite
 
 # Convert asyncpg-style $1, $2 placeholders to SQLite ? for the same SQL.
 _PLACEHOLDER_RE = re.compile(r"\$\d+")
@@ -64,6 +66,8 @@ async def init_pool(database_url: Optional[str] = None):
         _sqlite_conn = await aiosqlite.connect(path)
         await _sqlite_conn.execute("PRAGMA foreign_keys = ON")
         await _sqlite_conn.execute("PRAGMA journal_mode = WAL")
+        global _sqlite_write_lock
+        _sqlite_write_lock = asyncio.Lock()
         return _sqlite_conn
     else:
         import asyncpg
@@ -98,10 +102,16 @@ def is_sqlite() -> bool:
 @contextlib.asynccontextmanager
 async def acquire():
     """Acquire a connection from the pool (Postgres) or yield the single
-    connection (SQLite). Use this in route handlers instead of pool.acquire().
+    connection (SQLite). On SQLite, also acquire the write lock for writes
+    so concurrent INSERTs don't fail with "database is locked".
+    Use this in route handlers instead of pool.acquire().
     """
     if is_sqlite():
-        yield _sqlite_conn
+        # Serialize all writes against the single aiosqlite connection.
+        # Reads are safe to interleave; the lock is fair so reads can still
+        # proceed when no write is in progress.
+        async with _sqlite_write_lock:
+            yield _sqlite_conn
     else:
         async with _pool.acquire() as conn:
             yield conn
