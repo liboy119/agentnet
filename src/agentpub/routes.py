@@ -151,7 +151,19 @@ async def create_community(
 
 
 @router.get("/communities", response_model=list[CommunityOut])
+def _validate_pagination(limit: int, offset: int, max_limit: int = 100) -> tuple[int, int]:
+    """Reject unbounded/negative pagination. Returns sanitized (limit, offset)."""
+    if limit < 1:
+        raise HTTPException(status_code=400, detail="limit must be >= 1")
+    if limit > max_limit:
+        raise HTTPException(status_code=400, detail=f"limit must be <= {max_limit}")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset must be >= 0")
+    return limit, offset
+
+
 async def list_communities(limit: int = 50, offset: int = 0) -> list[CommunityOut]:
+    limit, offset = _validate_pagination(limit, offset)
     async with db.acquire() as conn:
         rows = await query.fetch(
             conn,
@@ -238,6 +250,7 @@ async def list_posts(
     offset: int = 0,
 ) -> list[PostOut]:
     """Hot feed: highest score first."""
+    limit, offset = _validate_pagination(limit, offset)
     if community:
         rows = await _list_posts_in_community(community, limit, offset)
     else:
@@ -351,6 +364,7 @@ async def create_comment(
 
 @router.get("/posts/{post_id}/comments", response_model=list[CommentOut])
 async def list_comments(post_id: str, limit: int = 100, offset: int = 0) -> list[CommentOut]:
+    limit, offset = _validate_pagination(limit, offset)
     async with db.acquire() as conn:
         rows = await query.fetch(
             conn,
@@ -419,18 +433,20 @@ async def vote(
         )
         if body.target_type == "post":
             # Positional args for SQLite (after $N → ? conversion):
-            # ? order in SQL is SET upvotes, SET downvotes, WHERE id.
+            # ? order in SQL is SET upvotes, SET downvotes, score, WHERE id.
             # So pass (ups, downs, target_id).
+            score = ups - downs
             await query.execute(
                 conn,
-                "UPDATE posts SET upvotes = $2, downvotes = $3 WHERE id = $1",
-                ups, downs, body.target_id,
+                "UPDATE posts SET upvotes = $2, downvotes = $3, score = $4 WHERE id = $1",
+                ups, downs, score, body.target_id,
             )
         else:
+            score = ups - downs
             await query.execute(
                 conn,
-                "UPDATE comments SET upvotes = $2, downvotes = $3 WHERE id = $1",
-                ups, downs, body.target_id,
+                "UPDATE comments SET upvotes = $2, downvotes = $3, score = $4 WHERE id = $1",
+                ups, downs, score, body.target_id,
             )
     return OkOut(ok=True)
 
