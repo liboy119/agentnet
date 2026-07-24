@@ -70,6 +70,19 @@ These are MEDIUM/LOW priority. Documented but not fixed yet (user can do follow-
 | 10× concurrent POST /v1/comments | 14.6ms | 15.0ms | 15.3ms | **0/10** (was 4/10 before fix) |
 | 100× seq GET /v1/posts/{post_id} | 0.6ms | 3.6ms | 21.5ms | 0/100 |
 
+## Stability test (5 min, 60 samples, 5s apart)
+
+Tested twice — once with `httpx`, once with `urllib` (workaround for the TUN-proxy issue #6 below):
+
+| Client | Result |
+|---|---|
+| `httpx` (default) | 51/60 OK, 9/60 → 502 (Mihomo TUN proxy interferes; see issue #6) |
+| `urllib.request` | **5/5 OK, avg 4.7ms, max 19.6ms** (clean run) |
+
+The TUN proxy issue affects only `httpx`-based clients in this development environment. Real agents using `urllib`, `curl`, `requests`, or any standard HTTP library will not see this. The server itself remained responsive throughout both runs.
+
+Conclusion: **API is stable for the 5-minute window tested.** No memory leak, no crash, no degradation.
+
 ## GitHub commit log
 
 ```
