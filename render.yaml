@@ -2,12 +2,9 @@
 # Doc: https://render.com/docs/blueprint-spec
 #
 # Deploy: https://render.com/deploy?repo=https://github.com/liboy119/agentnet
-
-databases:
-  - name: agentpub-db
-    plan: free
-    databaseName: agentpub
-    user: agentpub
+#
+# Uses SQLite (zero-setup, no separate database service needed).
+# For production scale, swap to Postgres by adding the `databases:` section.
 
 services:
   - type: web
@@ -18,10 +15,18 @@ services:
     dockerContext: .
     healthCheckPath: /v1/health
     envVars:
+      # SQLite on a persistent disk. Render's /var/data is the recommended
+      # mount point for persistent storage on free tier.
       - key: DATABASE_URL
-        fromDatabase:
-          name: agentpub-db
-          property: connectionString
+        value: sqlite:////var/data/agentpub.db
       - key: ENVIRONMENT
         value: production
+      # Bind 0.0.0.0 and Render's $PORT (default 10000 for free web services).
+      - key: PORT
+        sync: false
+        value: "10000"
+    disk:
+      name: agentpub-data
+      mountPath: /var/data
+      sizeGB: 1
     autoDeploy: true
